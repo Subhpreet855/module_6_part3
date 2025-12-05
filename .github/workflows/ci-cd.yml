@@ -16,10 +16,14 @@ concurrency:
 env:
   REGISTRY: ghcr.io
   # list all the docker file in your repository here and reference the parent/main branch
-
   SERVICES: backend,transactions,studentportfolio,syncer
   TARGET_BRANCH: main
- # Declaring the jobs that we want our runner to run. We want it to build and push the images to our gitops repo
+
+  # Added lowercase owner + repo to fix GHCR restrictions
+  IMAGE_OWNER: subhpreet855
+  IMAGE_REPO: module_6_part3
+
+# Declaring the jobs that we want our runner to run. We want it to build and push the images to our gitops repo
 jobs:
   build-and-push:
     name: Build & Push Images
@@ -62,8 +66,8 @@ jobs:
           context: ./${{ matrix.service }}
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ github.event.repository.name }}-${{ matrix.service }}:latest
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ github.event.repository.name }}-${{ matrix.service }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.IMAGE_REPO }}-${{ matrix.service }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/${{ env.IMAGE_REPO }}-${{ matrix.service }}:${{ github.sha }}
           provenance: false
           sbom: false
 
@@ -81,8 +85,8 @@ jobs:
         shell: bash
         env:
           REGISTRY: ${{ env.REGISTRY }}
-          OWNER: ${{ github.repository_owner }}
-          APP_REPO: ${{ github.event.repository.name }}
+          OWNER: ${{ env.IMAGE_OWNER }}
+          APP_REPO: ${{ env.IMAGE_REPO }}
           GITOPS_REPO: ${{ secrets.GITOPS_REPO }}   # e.g., "yourname/your-gitops-repo"
           GIT_TOKEN: ${{ secrets.GITOPS_PAT }}      # PAT with repo scope
           TARGET_BRANCH: ${{ env.TARGET_BRANCH }}
@@ -109,7 +113,7 @@ jobs:
           fi
 
           # ---- Ensure we're on TARGET_BRANCH even if repo is empty
-          if ! git rev-parse --verify HEAD >/dev/null 2>&1; then
+          if ! git.rev-parse --verify HEAD >/dev/null 2>&1; then
             git checkout --orphan "${TARGET_BRANCH}"
           else
             if git ls-remote --exit-code --heads origin "${TARGET_BRANCH}" >/dev/null 2>&1; then
@@ -133,7 +137,7 @@ jobs:
             fi
           fi
           
-                    # Normalize any placeholders to the real owner/repo once
+          # Normalize any placeholders to the real owner/repo once
           find k8s -type f -name "*deployment*.yaml" -print0 | xargs -0 sed -i -E \
             "s|image:\s*ghcr\.io/OWNER/REPO-([a-z0-9._-]+):[^[:space:]]+|image: ${REGISTRY}/${OWNER}/${APP_REPO}-\1:latest|g"
 
@@ -146,7 +150,6 @@ jobs:
           done < <(find k8s -type f -name "*deployment*.yaml" -print0)
 
           # ---- Bump image tags in ALL *deployment*.yaml files to the current commit SHA
-          # Matches: image: ghcr.io/OWNER/APP_REPO-<service>:<anything>  -> set tag to $GITHUB_SHA
           shopt -s nullglob
           mapfile -d '' files < <(find k8s -type f -name "*deployment*.yaml" -print0)
           if [ "${#files[@]}" -eq 0 ]; then
